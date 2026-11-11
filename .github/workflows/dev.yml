@@ -1,0 +1,34 @@
+env:
+  KUBECONFIG: /tmp/github-ci.kubeconfig
+jobs:
+  deploy:
+    environment: dev
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup
+      with:
+        KUBECONFIG_DATA: "${{ secrets.KUBECONFIG_DEV }}"
+    - env:
+        NEWLINE: |2+
+
+        SECRETS_JSON: "${{ toJson(secrets) }}"
+        VARS_JSON: "${{ toJson(vars) }}"
+      name: Helm Chart deploy
+      run: |
+        ENVV=$(jq -n --arg p 'APPFLOW_' 'env | with_entries(select(.key | startswith($p)))')
+        VARS=$(jq -n --arg p 'APPFLOW_' 'env.VARS_JSON | fromjson? // {} |  with_entries(select(.key | startswith($p)))')
+        SECRETS=$(jq -n --arg p 'APPFLOW_' 'env.SECRETS_JSON | fromjson? // {} | with_entries(select(.key | startswith($p)))')
+
+        jq -n --arg p 'APPFLOW_' --argjson e "$ENVV" --argjson v "$VARS" --argjson s "$SECRETS" \
+          '{env: ($e + $v + $s + ($e + $v + $s | with_entries(.key |= ltrimstr($p))))}' > "${PWD}/vars.yaml"
+
+        docker run -v "${PWD}:/data" -v "${KUBECONFIG}:/kubeconfig:ro" -w /data ghcr.io/appuio/helm-v4:latest /bin/bash -c "/bin/helm upgrade --install 'dev' /data --namespace '${NAMESPACE}' --values '/data/values.yaml' --values '/data/vars.yaml' --kubeconfig /kubeconfig"
+name: Build and deploy to dev
+"on":
+  push: {}
+  workflow_dispatch: {}

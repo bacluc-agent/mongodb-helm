@@ -1,0 +1,14 @@
+env:
+  KUBECONFIG: /tmp/github-ci.kubeconfig
+inputs:
+  KUBECONFIG_DATA:
+    required: true
+name: Environment Setup
+runs:
+  steps:
+  - run: "echo -n '${{ inputs.KUBECONFIG_DATA }}' > \"${KUBECONFIG}\""
+    shell: bash
+  - run: |
+      echo "NAMESPACE=$(yq '.contexts.0.context.namespace' ${KUBECONFIG})" >> $GITHUB_ENV
+    shell: bash
+  using: composite
